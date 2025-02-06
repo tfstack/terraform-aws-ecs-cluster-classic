@@ -1,6 +1,8 @@
-# IAM Role for ECS Instances
-resource "aws_iam_role" "ecs_assume" {
-  name = "${var.cluster_name}-ecs-assume"
+# IAM Role for ECS Instances (One Role for Each ASG)
+resource "aws_iam_role" "asg_roles" {
+  for_each = { for asg in var.autoscaling_groups : asg.name => asg }
+
+  name = "${each.key}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -12,10 +14,12 @@ resource "aws_iam_role" "ecs_assume" {
   })
 }
 
-# IAM Policy for ECS and ECR Access
-resource "aws_iam_policy" "ecs_assume" {
-  name        = "${var.cluster_name}-ecs-assume"
-  description = "Policy for ECS and ECR"
+# IAM Policy for ECS and ECR Access (One Policy for Each ASG)
+resource "aws_iam_policy" "asg_policies" {
+  for_each = { for asg in var.autoscaling_groups : asg.name => asg }
+
+  name        = "${each.key}-policy"
+  description = "Policy for ECS and ECR Access for ${each.value.name}"
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -56,23 +60,48 @@ resource "aws_iam_policy" "ecs_assume" {
   })
 }
 
-# Attach ECS IAM Policy to Role
+# Attach ECS IAM Policy to Each ASG's Role
 resource "aws_iam_role_policy_attachment" "ecs_assume" {
-  policy_arn = aws_iam_policy.ecs_assume.arn
-  role       = aws_iam_role.ecs_assume.name
+  for_each = aws_iam_role.asg_roles
+
+  policy_arn = lookup(aws_iam_policy.asg_policies, each.key, null).arn
+  role       = each.value.name
 }
 
-# Attach ECS Agent Registration Policy
-# This allows EC2 instances to register with an ECS Cluster
+# Attach ECS Agent Registration Policy to Each ASG's Role
 resource "aws_iam_role_policy_attachment" "ecs_instance_policy" {
+  for_each = aws_iam_role.asg_roles
+
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-  role       = aws_iam_role.ecs_assume.name
+  role       = each.value.name
 }
 
-# IAM Instance Profile for ECS Role
+# Attach Additional IAM Policies to Each ASG's Role
+resource "aws_iam_role_policy_attachment" "ecs_instance_additional_policy" {
+  for_each = {
+    for pair in flatten([
+      for group in var.autoscaling_groups : [
+        for role_key in keys(aws_iam_role.asg_roles) :
+        role_key == group.name ? [
+          for policy in group.additional_iam_policies : {
+            key        = "${role_key}-${policy}"
+            role       = aws_iam_role.asg_roles[role_key].name
+            policy_arn = policy
+          }
+        ] : []
+      ]
+    ]) : pair.key => pair
+  }
+
+  role       = each.value.role
+  policy_arn = each.value.policy_arn
+}
+
+
+# IAM Instance Profile for Each ASG Role
 resource "aws_iam_instance_profile" "ecs_assume" {
-  name = "${var.cluster_name}-ecs-assume"
-  role = aws_iam_role.ecs_assume.name
+  for_each = aws_iam_role.asg_roles
+  role     = each.value.name
 }
 
 # IAM Role for CloudWatch Agent Task Execution

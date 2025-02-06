@@ -58,17 +58,17 @@ output "ecs_launch_template_ids" {
 }
 
 # ECS IAM Outputs
-output "ecs_iam_policy_arn" {
-  description = "The ARN of the IAM policy for ECS and ECR access"
-  value       = aws_iam_policy.ecs_assume.arn
+output "ecs_iam_policy_arns" {
+  description = "ARNs of the IAM policies for ECS and ECR access"
+  value       = { for k, v in aws_iam_policy.asg_policies : k => v.arn }
 }
 
-output "ecs_instance_profile_name" {
-  description = "The name of the ECS instance profile"
-  value       = aws_iam_instance_profile.ecs_assume.name
+output "ecs_instance_profile_names" {
+  description = "Names of the ECS instance profiles"
+  value       = { for k, v in aws_iam_instance_profile.ecs_assume : k => v.name }
 }
 
-output "ecs_instance_role_arn" {
-  description = "The ARN of the ECS instance role"
-  value       = aws_iam_role.ecs_assume.arn
+output "ecs_instance_role_arns" {
+  description = "ARNs of the ECS instance roles"
+  value       = { for k, v in aws_iam_role.asg_roles : k => v.arn }
 }
