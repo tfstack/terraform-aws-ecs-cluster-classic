@@ -90,13 +90,14 @@ module "ecs_cluster_classic" {
   # Auto Scaling Groups
   autoscaling_groups = [
     {
-      name             = "asg-1"
-      min_size         = 1
-      max_size         = 6
-      desired_capacity = 3
-      image_id         = data.aws_ami.ecs_optimized.id
-      instance_type    = "t3a.medium"
-      ebs_optimized    = true
+      name                  = "asg-1"
+      min_size              = 1
+      max_size              = 6
+      desired_capacity      = 3
+      image_id              = data.aws_ami.ecs_optimized.id
+      instance_type         = "t3a.medium"
+      ebs_optimized         = true
+      protect_from_scale_in = false
 
       # Scaling Config
       managed_scaling = {

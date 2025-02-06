@@ -33,13 +33,14 @@ module "ecs_cluster_classic" {
 
   autoscaling_groups = [
     {
-      name             = "asg-1"
-      min_size         = 1
-      max_size         = 6
-      desired_capacity = 3
-      image_id         = data.aws_ami.ecs_optimized.id
-      instance_type    = "t3a.medium"
-      ebs_optimized    = true
+      name                  = "asg-1"
+      min_size              = 1
+      max_size              = 6
+      desired_capacity      = 3
+      image_id              = data.aws_ami.ecs_optimized.id
+      instance_type         = "t3a.medium"
+      ebs_optimized         = true
+      protect_from_scale_in = false
 
       managed_scaling = {
         status          = "ENABLED"
@@ -94,6 +95,15 @@ terraform apply -auto-approve
 
 | Name | Description |
 |------|-------------|
+| `ecs_cluster_id` | The ARN of the ECS cluster |
+| `ecs_cluster_capacity_providers` | The list of ECS cluster capacity providers |
+| `ecs_autoscaling_group_arns` | The ARNs of the ECS Auto Scaling Groups |
+| `ecs_capacity_providers` | Mapping of Auto Scaling Group names to ECS capacity providers |
+| `ecs_iam_policy_arn` | The ARN of the IAM policy for ECS instances |
+| `ecs_instance_profile_name` | The name of the IAM instance profile for ECS instances |
+| `ecs_instance_role_arn` | The ARN of the IAM role assigned to ECS instances |
+| `ecs_launch_template_ids` | Mapping of Auto Scaling Group names to Launch Template IDs |
+| `ecs_custom_services` | Information about custom ECS services deployed |
 | `all_module_outputs` | All outputs from the ECS module |
 
 ## Resources Created
@@ -104,8 +114,7 @@ terraform apply -auto-approve
 - `aws_autoscaling_group`
 - `aws_ecs_cluster`
 - `aws_ecs_service`
-- `aws_ami`
 
 ## License
 
-MIT License. Modify and use as needed.
+MIT License.

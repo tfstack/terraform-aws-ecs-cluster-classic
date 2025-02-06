@@ -183,3 +183,22 @@ variable "enable_cloudwatch_agent" {
   type        = bool
   default     = true
 }
+
+variable "ecs_services" {
+  description = "List of ECS services and their task definitions"
+  type = list(object({
+    name                    = string
+    scheduling_strategy     = optional(string, "REPLICA")
+    desired_count           = optional(number, 1)
+    cpu                     = optional(string, "256")
+    memory                  = optional(string, "512")
+    execution_role_policies = optional(list(string), [])
+    container_definitions   = string
+
+    volumes = optional(list(object({
+      name      = string
+      host_path = string
+    })), [])
+  }))
+  default = []
+}

@@ -2,6 +2,7 @@ resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
 }
 
+## Cloudwatch Agent
 resource "aws_ecs_task_definition" "cwagent" {
   count = var.enable_cloudwatch_agent ? 1 : 0
 
@@ -127,4 +128,42 @@ resource "aws_ecs_service" "cwagent" {
   depends_on = [
     aws_cloudwatch_log_group.cwagent
   ]
+}
+
+## Custom services
+resource "aws_ecs_task_definition" "this" {
+  for_each = { for s in var.ecs_services : s.name => s }
+
+  family                   = each.value.name
+  network_mode             = "bridge"
+  requires_compatibilities = ["EC2"]
+  cpu                      = each.value.cpu
+  memory                   = each.value.memory
+
+  execution_role_arn    = length(each.value.execution_role_policies) > 0 ? aws_iam_role.ecs_task_execution[each.key].arn : null
+  container_definitions = each.value.container_definitions
+
+  dynamic "volume" {
+    for_each = lookup(each.value, "volumes", [])
+
+    content {
+      name      = try(volume.value.name, volume.key)
+      host_path = try(volume.value.host_path, null)
+    }
+  }
+}
+
+resource "aws_ecs_service" "this" {
+  for_each = { for s in var.ecs_services : s.name => s }
+
+  name                 = each.value.name
+  cluster              = aws_ecs_cluster.this.id
+  task_definition      = aws_ecs_task_definition.this[each.key].arn
+  launch_type          = "EC2"
+  force_new_deployment = true
+
+  scheduling_strategy = lookup(each.value, "scheduling_strategy", "REPLICA")
+  propagate_tags      = lookup(each.value, "propagate_tags", null)
+
+  desired_count = lookup(each.value, "scheduling_strategy", "REPLICA") == "REPLICA" ? lookup(each.value, "desired_count", 1) : null
 }

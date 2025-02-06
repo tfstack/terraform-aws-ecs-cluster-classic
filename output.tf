@@ -19,6 +19,18 @@ output "cwagent_task_role_arn" {
   value       = aws_iam_role.cwagent_assume.arn
 }
 
+# Custom services Outputs
+output "ecs_custom_services" {
+  description = "ECS Custom Services Information"
+  value = {
+    for k, v in aws_ecs_service.this : k => {
+      service_name       = v.name
+      task_definition    = aws_ecs_task_definition.this[k].arn
+      execution_role_arn = try(aws_iam_role.ecs_task_execution[k].arn, null)
+    }
+  }
+}
+
 # ECS Cluster Outputs
 output "ecs_autoscaling_group_arns" {
   description = "ARNs of the ECS Auto Scaling Groups"
