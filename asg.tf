@@ -66,7 +66,8 @@ resource "aws_autoscaling_group" "this" {
   lifecycle {
     create_before_destroy = true
     ignore_changes = [
-      desired_capacity
+      desired_capacity,
+      tag
     ]
   }
 
@@ -77,8 +78,8 @@ resource "aws_autoscaling_group" "this" {
   }
 
   tag {
-    key                 = "amazon-ecs-managed"
-    value               = true
+    key                 = "AmazonECSManaged"
+    value               = "true"
     propagate_at_launch = true
   }
 }
@@ -105,17 +106,11 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
 
   capacity_providers = [for asg in var.autoscaling_groups : "${var.cluster_name}-${asg.name}"]
 
+  lifecycle {
+    ignore_changes = [capacity_providers] # Prevent destruction dependency issues
+  }
+
   depends_on = [
     aws_ecs_capacity_provider.this
   ]
-}
-
-# Ensures ECS tasks are properly drained before terminating EC2 instances
-resource "aws_autoscaling_lifecycle_hook" "this" {
-  for_each = { for asg in var.autoscaling_groups : asg.name => asg }
-
-  name                   = "${var.cluster_name}-${each.value.name}"
-  autoscaling_group_name = aws_autoscaling_group.this[each.key].name
-  lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
-  heartbeat_timeout      = 300
 }

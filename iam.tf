@@ -126,3 +126,27 @@ resource "aws_iam_role_policy_attachment" "cwagent_execution_ecs" {
   role       = aws_iam_role.cwagent_execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
+#########
+# Optional ECS Task Execution Role and Policy
+resource "aws_iam_role" "ecs_task_execution" {
+  for_each = { for s in var.ecs_services : s.name => s if length(s.execution_role_policies) > 0 }
+
+  name = "${each.key}-task-exec"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ecs-tasks.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+# Attach default ECS execution policy
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
+  for_each   = aws_iam_role.ecs_task_execution
+  role       = each.value.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}

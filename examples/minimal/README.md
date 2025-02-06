@@ -55,6 +55,41 @@ module "ecs_cluster_classic" {
       })
     }
   ]
+
+  ecs_services = [
+    {
+      name          = "web-app"
+      desired_count = 3
+      cpu           = "256"
+      memory        = "512"
+
+      execution_role_policies = [
+        "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+        "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+      ]
+
+      container_definitions = jsonencode([
+        {
+          name      = "nginx"
+          image     = "nginx:latest"
+          cpu       = 256
+          memory    = 512
+          essential = true
+          portMappings = [{
+            containerPort = 80
+            hostPort      = 0
+          }]
+          healthCheck = {
+            command     = ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+            interval    = 30
+            timeout     = 5
+            retries     = 3
+            startPeriod = 10
+          }
+        }
+      ])
+    }
+  ]
 }
 ```
 
@@ -71,7 +106,15 @@ terraform apply -auto-approve
 
 | Name | Description |
 |------|-------------|
-| `all_module_outputs` | All outputs from the ECS module |
+| `ecs_cluster_id` | The ARN of the ECS cluster |
+| `ecs_cluster_capacity_providers` | The list of ECS cluster capacity providers |
+| `ecs_autoscaling_group_arns` | The ARNs of the ECS Auto Scaling Groups |
+| `ecs_capacity_providers` | Mapping of Auto Scaling Group names to ECS capacity providers |
+| `ecs_iam_policy_arn` | The ARN of the IAM policy for ECS instances |
+| `ecs_instance_profile_name` | The name of the IAM instance profile for ECS instances |
+| `ecs_instance_role_arn` | The ARN of the IAM role assigned to ECS instances |
+| `ecs_launch_template_ids` | Mapping of Auto Scaling Group names to Launch Template IDs |
+| `ecs_custom_services` | Information about custom ECS services deployed |
 
 ## Resources Created
 
