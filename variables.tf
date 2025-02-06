@@ -74,6 +74,8 @@ variable "autoscaling_groups" {
     health_check_grace_period = optional(number, 0)
     instance_type             = string
 
+    additional_iam_policies = optional(list(string), [])
+
     managed_scaling = optional(object({
       status          = string
       target_capacity = number
@@ -115,7 +117,6 @@ variable "autoscaling_groups" {
 
     user_data = string
   }))
-
 
   validation {
     condition     = length(var.autoscaling_groups) > 0
@@ -176,8 +177,12 @@ variable "autoscaling_groups" {
     condition     = alltrue([for asg in var.autoscaling_groups : alltrue([for policy in asg.termination_policies : contains(["AllocationStrategy", "OldestLaunchTemplate", "ClosestToNextInstanceHour", "Default"], policy)])])
     error_message = "termination_policies must contain only valid values: 'AllocationStrategy', 'OldestLaunchTemplate', 'ClosestToNextInstanceHour', or 'Default'."
   }
-}
 
+  validation {
+    condition     = alltrue([for asg in var.autoscaling_groups : alltrue([for policy in asg.additional_iam_policies : can(regex("^arn:aws:iam:", policy))])])
+    error_message = "Each IAM policy in additional_iam_policies must be a valid AWS IAM policy ARN (e.g., 'arn:aws:iam::123456789012:policy/YourPolicyName')."
+  }
+}
 variable "enable_cloudwatch_agent" {
   description = "Enable or disable CloudWatch Agent container"
   type        = bool

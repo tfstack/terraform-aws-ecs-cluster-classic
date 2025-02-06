@@ -99,6 +99,10 @@ module "ecs_cluster_classic" {
       ebs_optimized         = true
       protect_from_scale_in = false
 
+      additional_iam_policies = [
+        "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      ]
+
       # Scaling Config
       managed_scaling = {
         status          = "ENABLED"
