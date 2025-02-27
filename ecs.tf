@@ -162,6 +162,8 @@ resource "aws_ecs_service" "this" {
   launch_type          = "EC2"
   force_new_deployment = true
 
+  enable_ecs_managed_tags = lookup(each.value, "enable_ecs_managed_tags", false)
+
   scheduling_strategy = lookup(each.value, "scheduling_strategy", "REPLICA")
   propagate_tags      = lookup(each.value, "propagate_tags", null)
 

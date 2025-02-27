@@ -199,6 +199,7 @@ variable "ecs_services" {
     memory                  = optional(string, "512")
     execution_role_policies = optional(list(string), [])
     container_definitions   = string
+    enable_ecs_managed_tags = optional(bool, false)
 
     volumes = optional(list(object({
       name      = string
