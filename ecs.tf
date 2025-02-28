@@ -151,6 +151,8 @@ resource "aws_ecs_task_definition" "this" {
       host_path = try(volume.value.host_path, null)
     }
   }
+
+  tags = each.value.task_tags
 }
 
 resource "aws_ecs_service" "this" {
@@ -168,4 +170,6 @@ resource "aws_ecs_service" "this" {
   propagate_tags      = lookup(each.value, "propagate_tags", null)
 
   desired_count = lookup(each.value, "scheduling_strategy", "REPLICA") == "REPLICA" ? lookup(each.value, "desired_count", 1) : null
+
+  tags = each.value.service_tags
 }
