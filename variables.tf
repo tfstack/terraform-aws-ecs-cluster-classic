@@ -201,6 +201,9 @@ variable "ecs_services" {
     container_definitions   = string
     enable_ecs_managed_tags = optional(bool, false)
 
+    service_tags = optional(map(string))
+    task_tags    = optional(map(string))
+
     volumes = optional(list(object({
       name      = string
       host_path = string
