@@ -114,3 +114,20 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
     aws_ecs_capacity_provider.this
   ]
 }
+
+data "aws_instances" "this" {
+  filter {
+    name   = "tag:Name"
+    values = [for asg in var.autoscaling_groups : "${var.cluster_name}-${asg.name}"]
+  }
+
+  filter {
+    name   = "tag:AmazonECSManaged"
+    values = ["true"]
+  }
+
+  filter {
+    name   = "instance-state-name"
+    values = ["running"]
+  }
+}

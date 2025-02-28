@@ -135,20 +135,24 @@ resource "aws_ecs_task_definition" "this" {
   for_each = { for s in var.ecs_services : s.name => s }
 
   family                   = each.value.name
-  network_mode             = "bridge"
+  network_mode             = each.value.network_mode
   requires_compatibilities = ["EC2"]
   cpu                      = each.value.cpu
   memory                   = each.value.memory
 
+  task_role_arn         = lookup(each.value, "task_role_arn", null)
   execution_role_arn    = length(each.value.execution_role_policies) > 0 ? aws_iam_role.ecs_task_execution[each.key].arn : null
   container_definitions = each.value.container_definitions
+
+  pid_mode = lookup(each.value, "pid_mode", null)
+  ipc_mode = lookup(each.value, "ipc_mode", null)
 
   dynamic "volume" {
     for_each = lookup(each.value, "volumes", [])
 
     content {
-      name      = try(volume.value.name, volume.key)
-      host_path = try(volume.value.host_path, null)
+      name      = volume.value.name
+      host_path = volume.value.host_path
     }
   }
 
@@ -162,14 +166,21 @@ resource "aws_ecs_service" "this" {
   cluster              = aws_ecs_cluster.this.id
   task_definition      = aws_ecs_task_definition.this[each.key].arn
   launch_type          = "EC2"
-  force_new_deployment = true
+  force_new_deployment = lookup(each.value, "force_new_deployment", false)
 
   enable_ecs_managed_tags = lookup(each.value, "enable_ecs_managed_tags", false)
+  propagate_tags          = lookup(each.value, "propagate_tags", "TASK_DEFINITION")
+  scheduling_strategy     = lookup(each.value, "scheduling_strategy", "REPLICA")
 
-  scheduling_strategy = lookup(each.value, "scheduling_strategy", "REPLICA")
-  propagate_tags      = lookup(each.value, "propagate_tags", null)
+  desired_count = each.value.scheduling_strategy == "REPLICA" ? lookup(each.value, "desired_count", 1) : null
 
-  desired_count = lookup(each.value, "scheduling_strategy", "REPLICA") == "REPLICA" ? lookup(each.value, "desired_count", 1) : null
+  deployment_minimum_healthy_percent = lookup(each.value, "deployment_minimum_healthy_percent", 100)
+  deployment_maximum_percent         = lookup(each.value, "deployment_maximum_percent", 200)
+  health_check_grace_period_seconds  = lookup(each.value, "health_check_grace_period_seconds", 0)
+
+  deployment_controller {
+    type = lookup(each.value, "deployment_controller", "ECS")
+  }
 
   tags = each.value.service_tags
 }
