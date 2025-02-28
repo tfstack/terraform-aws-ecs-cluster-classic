@@ -52,6 +52,16 @@ output "ecs_cluster_id" {
   value       = aws_ecs_cluster.this.id
 }
 
+output "ecs_instance_ids" {
+  description = "List of ECS Instance IDs in the Auto Scaling Group"
+  value       = data.aws_instances.this.ids
+}
+
+output "ecs_instance_private_ips" {
+  description = "List of Private IPs of ECS instances in the Auto Scaling Group"
+  value       = data.aws_instances.this.private_ips
+}
+
 output "ecs_launch_template_ids" {
   description = "IDs of the ECS Launch Templates"
   value       = { for k, v in aws_launch_template.this : k => v.id }

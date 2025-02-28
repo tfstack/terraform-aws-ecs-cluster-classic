@@ -190,7 +190,7 @@ variable "enable_cloudwatch_agent" {
 }
 
 variable "ecs_services" {
-  description = "List of ECS services and their task definitions"
+  description = "List of ECS services and their task definitions (EC2 launch type only)"
   type = list(object({
     name                    = string
     scheduling_strategy     = optional(string, "REPLICA")
@@ -200,6 +200,20 @@ variable "ecs_services" {
     execution_role_policies = optional(list(string), [])
     container_definitions   = string
     enable_ecs_managed_tags = optional(bool, false)
+    propagate_tags          = optional(string, "TASK_DEFINITION")
+
+    deployment_minimum_healthy_percent = optional(number, 100)
+    deployment_maximum_percent         = optional(number, 200)
+    health_check_grace_period_seconds  = optional(number, 0)
+    force_new_deployment               = optional(bool, false)
+    deployment_controller              = optional(string, "ECS")
+
+    task_role_arn = optional(string)
+
+    network_mode             = optional(string, "bridge")
+    requires_compatibilities = optional(list(string), ["EC2"])
+    pid_mode                 = optional(string)
+    ipc_mode                 = optional(string)
 
     service_tags = optional(map(string))
     task_tags    = optional(map(string))
@@ -209,5 +223,31 @@ variable "ecs_services" {
       host_path = string
     })), [])
   }))
+
   default = []
+
+  validation {
+    condition     = alltrue([for s in var.ecs_services : contains(["REPLICA", "DAEMON"], s.scheduling_strategy)])
+    error_message = "scheduling_strategy must be either 'REPLICA' or 'DAEMON'."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.ecs_services : contains(["bridge", "host"], s.network_mode)])
+    error_message = "network_mode must be 'bridge' or 'host' (EC2 only, no 'awsvpc')."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.ecs_services : contains(["ECS", "CODE_DEPLOY"], s.deployment_controller)])
+    error_message = "deployment_controller must be 'ECS' or 'CODE_DEPLOY'."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.ecs_services : can(regex("^[0-9]+$", s.cpu))])
+    error_message = "cpu must be a numeric string (e.g., '256', '512', '1024')."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.ecs_services : can(regex("^[0-9]+$", s.memory))])
+    error_message = "memory must be a numeric string (e.g., '512', '1024', '2048')."
+  }
 }

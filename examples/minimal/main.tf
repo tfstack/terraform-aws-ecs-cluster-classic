@@ -142,10 +142,14 @@ module "ecs_cluster_classic" {
 
   ecs_services = [
     {
-      name          = "web-app"
-      desired_count = 3
-      cpu           = "256"
-      memory        = "512"
+      name                    = "web-app"
+      desired_count           = 3
+      cpu                     = "256"
+      memory                  = "512"
+      scheduling_strategy     = "REPLICA"
+      propagate_tags          = "TASK_DEFINITION"
+      enable_ecs_managed_tags = true
+      force_new_deployment    = true
 
       execution_role_policies = [
         "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
@@ -172,6 +176,23 @@ module "ecs_cluster_classic" {
           }
         }
       ])
+
+      deployment_minimum_healthy_percent = 100
+      deployment_maximum_percent         = 200
+      health_check_grace_period_seconds  = 30
+
+      network_mode             = "bridge"
+      requires_compatibilities = ["EC2"]
+
+      service_tags = {
+        Environment = "staging"
+        Project     = "WebApp"
+        Owner       = "DevOps"
+      }
+      task_tags = {
+        TaskType = "backend"
+        Version  = "1.0"
+      }
     },
     {
       name          = "wildfly"

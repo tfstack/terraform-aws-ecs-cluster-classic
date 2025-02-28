@@ -38,6 +38,45 @@ run "ecs_cluster_test" {
         EOT
       }
     ]
+
+    # Configure ECS Services
+    ecs_services = [
+      {
+        name                    = "web-app"
+        scheduling_strategy     = "REPLICA"
+        desired_count           = 2
+        cpu                     = "256"
+        memory                  = "512"
+        propagate_tags          = "TASK_DEFINITION"
+        enable_ecs_managed_tags = true
+
+        execution_role_policies = [
+          "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+          "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+        ]
+
+        container_definitions = jsonencode([
+          {
+            name      = "nginx"
+            image     = "nginx:latest"
+            cpu       = 256
+            memory    = 512
+            essential = true
+            portMappings = [{
+              containerPort = 80
+              hostPort      = 0
+            }]
+            healthCheck = {
+              command     = ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+              interval    = 30
+              timeout     = 5
+              retries     = 3
+              startPeriod = 10
+            }
+          }
+        ])
+      }
+    ]
   }
 
   # Validate ECS cluster creation
@@ -50,5 +89,29 @@ run "ecs_cluster_test" {
   assert {
     condition     = length(aws_autoscaling_group.this) > 0
     error_message = "Auto Scaling Group was not created successfully."
+  }
+
+  # Validate ECS instances exist
+  assert {
+    condition = alltrue([
+      for id in data.aws_instances.this.ids : can(id)
+    ])
+    error_message = "No valid ECS instance IDs found."
+  }
+
+  # Ensure all private IPs are within the expected VPC CIDR range
+  assert {
+    condition = alltrue([
+      for ip in data.aws_instances.this.private_ips : can(regex("^10\\.0\\..*", ip))
+    ])
+    error_message = "Some ECS instance private IPs are outside the expected VPC CIDR range."
+  }
+
+  # Validate ECS services exist
+  assert {
+    condition = alltrue([
+      for s in keys(aws_ecs_service.this) : can(s)
+    ])
+    error_message = "ECS Services were not created successfully."
   }
 }
