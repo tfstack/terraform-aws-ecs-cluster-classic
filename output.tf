@@ -34,12 +34,12 @@ output "ecs_custom_services" {
 # ECS Cluster Outputs
 output "ecs_autoscaling_group_arns" {
   description = "ARNs of the ECS Auto Scaling Groups"
-  value       = { for k, v in aws_autoscaling_group.this : k => v.arn }
+  value       = { for k, v in aws_autoscaling_group.this : v.name => v.arn }
 }
 
 output "ecs_capacity_providers" {
   description = "Names of ECS Capacity Providers"
-  value       = { for k, v in aws_ecs_capacity_provider.this : k => v.name }
+  value       = [for v in aws_ecs_capacity_provider.this : v.name]
 }
 
 output "ecs_cluster_capacity_providers" {
@@ -70,15 +70,15 @@ output "ecs_launch_template_ids" {
 # ECS IAM Outputs
 output "ecs_iam_policy_arns" {
   description = "ARNs of the IAM policies for ECS and ECR access"
-  value       = { for k, v in aws_iam_policy.asg_policies : k => v.arn }
+  value       = { for v in aws_iam_policy.asg_policies : v.name => v.arn }
 }
 
 output "ecs_instance_profile_names" {
   description = "Names of the ECS instance profiles"
-  value       = { for k, v in aws_iam_instance_profile.ecs_assume : k => v.name }
+  value       = [for v in aws_iam_instance_profile.ecs_assume : v.name]
 }
 
 output "ecs_instance_role_arns" {
   description = "ARNs of the ECS instance roles"
-  value       = { for k, v in aws_iam_role.asg_roles : k => v.arn }
+  value       = { for v in aws_iam_role.asg_roles : v.name => v.arn }
 }
