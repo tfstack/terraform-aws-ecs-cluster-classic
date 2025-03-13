@@ -60,7 +60,28 @@ resource "aws_autoscaling_group" "this" {
 
   launch_template {
     name    = aws_launch_template.this[each.key].name
-    version = "$Latest"
+    version = each.value.use_explicit_launch_template_version ? aws_launch_template.this[each.key].latest_version : "$Latest"
+  }
+
+  dynamic "instance_refresh" {
+    for_each = try(each.value.instance_refresh.enabled, false) ? [each.value.instance_refresh] : []
+
+    content {
+      strategy = instance_refresh.value.strategy
+      triggers = instance_refresh.value.triggers
+
+      preferences {
+        auto_rollback                = instance_refresh.value.auto_rollback
+        min_healthy_percentage       = instance_refresh.value.min_healthy_percentage
+        max_healthy_percentage       = instance_refresh.value.max_healthy_percentage
+        instance_warmup              = instance_refresh.value.instance_warmup
+        scale_in_protected_instances = instance_refresh.value.scale_in_protected_instances
+        standby_instances            = instance_refresh.value.standby_instances
+        skip_matching                = instance_refresh.value.skip_matching
+        checkpoint_delay             = instance_refresh.value.checkpoint_delay
+        checkpoint_percentages       = instance_refresh.value.checkpoint_percentages
+      }
+    }
   }
 
   lifecycle {
@@ -90,7 +111,8 @@ resource "aws_ecs_capacity_provider" "this" {
   name = "${var.cluster_name}-${each.value.name}"
 
   auto_scaling_group_provider {
-    auto_scaling_group_arn = aws_autoscaling_group.this[each.key].arn
+    auto_scaling_group_arn         = aws_autoscaling_group.this[each.key].arn
+    managed_termination_protection = each.value.managed_termination_protection
 
     managed_scaling {
       status          = each.value.managed_scaling.status

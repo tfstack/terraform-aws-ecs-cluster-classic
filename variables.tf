@@ -1,3 +1,14 @@
+variable "region" {
+  description = "AWS region for the provider. Defaults to ap-southeast-2 if not specified."
+  type        = string
+  default     = "ap-southeast-2"
+
+  validation {
+    condition     = can(regex("^([a-z]{2}-[a-z]+-\\d{1})$", var.region))
+    error_message = "Invalid AWS region format. Example: 'us-east-1', 'ap-southeast-2'."
+  }
+}
+
 variable "vpc" {
   description = "VPC configuration settings"
   type = object({
@@ -76,6 +87,23 @@ variable "autoscaling_groups" {
 
     additional_iam_policies = optional(list(string), [])
 
+    instance_refresh = optional(object({
+      enabled                      = optional(bool, false)
+      strategy                     = optional(string, "Rolling")
+      auto_rollback                = optional(bool, false)
+      min_healthy_percentage       = optional(number, 75)
+      max_healthy_percentage       = optional(number, 100)
+      instance_warmup              = optional(number, 300)
+      scale_in_protected_instances = optional(string, "Ignore")
+      standby_instances            = optional(string, "Ignore")
+      skip_matching                = optional(bool, false)
+      checkpoint_delay             = optional(number, 3600)
+      checkpoint_percentages       = optional(list(number))
+      triggers                     = optional(list(string), ["launch_configuration"])
+    }), null)
+
+    managed_termination_protection = optional(string, "DISABLED")
+
     managed_scaling = optional(object({
       status          = string
       target_capacity = number
@@ -115,7 +143,8 @@ variable "autoscaling_groups" {
       "Default"
     ])
 
-    user_data = string
+    user_data                            = string
+    use_explicit_launch_template_version = optional(bool, false)
   }))
 
   validation {
@@ -144,6 +173,67 @@ variable "autoscaling_groups" {
   }
 
   validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(contains(["Rolling"], asg.instance_refresh.strategy), true) # Use `try()` to avoid accessing null
+    ])
+    error_message = "Only Rolling is allowed as an instance refresh strategy."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(!asg.instance_refresh.auto_rollback || contains(["launch_configuration", "launch_template"], asg.instance_refresh.triggers[0]), true)
+    ])
+    error_message = "auto_rollback may only be set to true when specifying a launch_template or launch_configuration."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(asg.instance_refresh.min_healthy_percentage >= 0 && asg.instance_refresh.min_healthy_percentage <= 100, true)
+    ])
+    error_message = "min_healthy_percentage must be between 0 and 100."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(asg.instance_refresh.max_healthy_percentage >= 100 && asg.instance_refresh.max_healthy_percentage <= 200, true)
+    ])
+    error_message = "max_healthy_percentage must be between 100 and 200."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(contains(["Refresh", "Ignore", "Wait"], asg.instance_refresh.scale_in_protected_instances), true)
+    ])
+    error_message = "scale_in_protected_instances must be one of: Refresh, Ignore, or Wait."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(asg.instance_refresh.instance_warmup >= 0, true)
+    ])
+    error_message = "instance_warmup must be a non-negative integer (>= 0)."
+  }
+
+  validation {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      try(contains(["Terminate", "Ignore", "Wait"], asg.instance_refresh.standby_instances), true)
+    ])
+    error_message = "standby_instances must be one of: Terminate, Ignore, or Wait."
+  }
+
+  validation {
+    condition     = alltrue([for asg in var.autoscaling_groups : contains(["ENABLED", "DISABLED"], asg.managed_termination_protection)])
+    error_message = "Allowed values for managed_termination_protection are ENABLED or DISABLED."
+  }
+
+  validation {
     condition     = alltrue([for asg in var.autoscaling_groups : asg.managed_scaling.target_capacity >= 0 && asg.managed_scaling.target_capacity <= 100])
     error_message = "managed_scaling.target_capacity must be between 0 and 100."
   }
@@ -155,12 +245,12 @@ variable "autoscaling_groups" {
 
   validation {
     condition     = alltrue([for asg in var.autoscaling_groups : asg.metadata_options.http_endpoint == "enabled"])
-    error_message = "metadata_options.http_endpoint must be 'enabled'."
+    error_message = "metadata_options.http_endpoint must be enabled."
   }
 
   validation {
     condition     = alltrue([for asg in var.autoscaling_groups : asg.metadata_options.http_tokens == "required"])
-    error_message = "metadata_options.http_tokens must be 'required'."
+    error_message = "metadata_options.http_tokens must be required."
   }
 
   validation {
@@ -170,12 +260,12 @@ variable "autoscaling_groups" {
 
   validation {
     condition     = alltrue([for asg in var.autoscaling_groups : contains(["enabled", "disabled"], asg.metadata_options.instance_metadata_tags)])
-    error_message = "metadata_options.instance_metadata_tags must be either 'enabled' or 'disabled'."
+    error_message = "metadata_options.instance_metadata_tags must be either enabled or disabled."
   }
 
   validation {
     condition     = alltrue([for asg in var.autoscaling_groups : alltrue([for policy in asg.termination_policies : contains(["AllocationStrategy", "OldestLaunchTemplate", "ClosestToNextInstanceHour", "Default"], policy)])])
-    error_message = "termination_policies must contain only valid values: 'AllocationStrategy', 'OldestLaunchTemplate', 'ClosestToNextInstanceHour', or 'Default'."
+    error_message = "termination_policies must contain only valid values: AllocationStrategy, OldestLaunchTemplate, ClosestToNextInstanceHour, or Default."
   }
 
   validation {
@@ -228,26 +318,26 @@ variable "ecs_services" {
 
   validation {
     condition     = alltrue([for s in var.ecs_services : contains(["REPLICA", "DAEMON"], s.scheduling_strategy)])
-    error_message = "scheduling_strategy must be either 'REPLICA' or 'DAEMON'."
+    error_message = "scheduling_strategy must be either REPLICA or DAEMON."
   }
 
   validation {
     condition     = alltrue([for s in var.ecs_services : contains(["bridge", "host"], s.network_mode)])
-    error_message = "network_mode must be 'bridge' or 'host' (EC2 only, no 'awsvpc')."
+    error_message = "network_mode must be bridge or host (EC2 only, no awsvpc)."
   }
 
   validation {
     condition     = alltrue([for s in var.ecs_services : contains(["ECS", "CODE_DEPLOY"], s.deployment_controller)])
-    error_message = "deployment_controller must be 'ECS' or 'CODE_DEPLOY'."
+    error_message = "deployment_controller must be ECS or CODE_DEPLOY."
   }
 
   validation {
     condition     = alltrue([for s in var.ecs_services : can(regex("^[0-9]+$", s.cpu))])
-    error_message = "cpu must be a numeric string (e.g., '256', '512', '1024')."
+    error_message = "cpu must be a numeric string (e.g., 256, 512, 1024)."
   }
 
   validation {
     condition     = alltrue([for s in var.ecs_services : can(regex("^[0-9]+$", s.memory))])
-    error_message = "memory must be a numeric string (e.g., '512', '1024', '2048')."
+    error_message = "memory must be a numeric string (e.g., 512, 1024, 2048)."
   }
 }
