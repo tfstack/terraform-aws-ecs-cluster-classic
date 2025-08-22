@@ -1,28 +1,24 @@
-# Local Variables
-locals {
-  azs                  = slice(data.aws_availability_zones.available.names, 0, 3)
-  enable_dns_hostnames = true
-  name                 = "cltest"
-  private_subnets      = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
-  public_subnets       = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  region               = "ap-southeast-1"
-  vpc_cidr             = "10.0.0.0/16"
-}
+############################################
+# Provider Configuration
+############################################
 
 terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "5.84.0"
+      version = ">= 6.0.0"
     }
   }
 }
 
 provider "aws" {
-  region = local.region
+  region = "ap-southeast-2"
 }
 
+############################################
 # Data Sources
+############################################
+
 data "aws_availability_zones" "available" {}
 
 data "aws_ami" "ecs_optimized" {
@@ -35,27 +31,48 @@ data "aws_ami" "ecs_optimized" {
   }
 }
 
+resource "random_string" "suffix" {
+  length  = 4
+  special = false
+  upper   = false
+}
+
+############################################
+# Local Variables
+############################################
+
+locals {
+  azs             = ["ap-southeast-2a", "ap-southeast-2b", "ap-southeast-2c"]
+  name            = "example"
+  private_subnets = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  vpc_cidr        = "10.0.0.0/16"
+
+  suffix = random_string.suffix.result
+
+  tags = {
+    Environment = "dev"
+    Project     = "example"
+  }
+}
+
 # VPC Module
 module "vpc" {
-  source = "tfstack/vpc/aws"
+  source = "cloudbuildlab/vpc/aws"
 
-  region             = local.region
   vpc_name           = local.name
-  vpc_cidr           = "10.0.0.0/16"
-  availability_zones = data.aws_availability_zones.available.names
+  vpc_cidr           = local.vpc_cidr
+  availability_zones = local.azs
 
-  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  private_subnets = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+  public_subnet_cidrs  = local.public_subnets
+  private_subnet_cidrs = local.private_subnets
 
-  eic_subnet = "jumphost"
+  # Enable Internet Gateway & NAT Gateway
+  # A single NAT gateway is used instead of multiple for cost efficiency.
+  create_igw       = true
+  nat_gateway_type = "single"
 
-  jumphost_instance_create     = true
-  jumphost_log_prevent_destroy = false
-  jumphost_subnet              = "10.0.0.0/24"
-  jumphost_allow_egress        = true
-
-  create_igw = true
-  ngw_type   = "single"
+  tags = local.tags
 }
 
 # Security Group
@@ -88,8 +105,6 @@ resource "aws_security_group" "ecs" {
 # ECS Cluster Module
 module "ecs_cluster_classic" {
   source = "../.."
-
-  region = local.region
 
   # Core Configuration
   cluster_name            = local.name
@@ -169,7 +184,7 @@ module "ecs_cluster_classic" {
         {
           resource_type = "instance"
           tags = {
-            Environment = "production"
+            Environment = "dev"
             Name        = "instance-1"
           }
         }
@@ -221,7 +236,7 @@ module "ecs_cluster_classic" {
         {
           resource_type = "instance"
           tags = {
-            Environment = "production"
+            Environment = "dev"
             Name        = "instance-2"
           }
         }
@@ -246,16 +261,10 @@ variable "slack_webhook_url" {
   type        = string
 }
 
-resource "random_string" "suffix" {
-  length  = 8
-  special = false
-  upper   = false
-}
 
 module "ec2_auto_scaling_event" {
   source = "tfstack/event-notifier-slack/aws"
 
-  region = local.region
   name   = "${local.name}-ec2-auto-scaling-event"
   suffix = random_string.suffix.result
 

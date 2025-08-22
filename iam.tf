@@ -179,3 +179,53 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
   role       = each.value.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
+#########
+# CloudWatch Metrics Role for ECS Tasks
+resource "aws_iam_role" "ecs_cloudwatch_metrics" {
+  count = var.enable_cloudwatch_agent ? 1 : 0
+
+  name = "${var.cluster_name}-ecs-cloudwatch-metrics"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name    = "${var.cluster_name}-ecs-cloudwatch-metrics"
+    Purpose = "CloudWatch metrics for ECS tasks"
+  }
+}
+
+# CloudWatch policy for ECS tasks to send custom metrics
+resource "aws_iam_policy" "ecs_cloudwatch_metrics" {
+  count = var.enable_cloudwatch_agent ? 1 : 0
+
+  name        = "${var.cluster_name}-ecs-cloudwatch-metrics"
+  description = "CloudWatch permissions for ECS tasks to send custom metrics"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_cloudwatch_metrics_policy" {
+  count = var.enable_cloudwatch_agent ? 1 : 0
+
+  role       = aws_iam_role.ecs_cloudwatch_metrics[0].name
+  policy_arn = aws_iam_policy.ecs_cloudwatch_metrics[0].arn
+}
