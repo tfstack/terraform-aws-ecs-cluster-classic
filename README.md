@@ -73,6 +73,9 @@ No modules.
 
 | Name | Description |
 |------|-------------|
+| <a name="output_cluster_arn"></a> [cluster\_arn](#output\_cluster\_arn) | The ARN of the ECS cluster |
+| <a name="output_cluster_name"></a> [cluster\_name](#output\_cluster\_name) | The name of the ECS cluster |
+| <a name="output_container_insights_enabled"></a> [container\_insights\_enabled](#output\_container\_insights\_enabled) | Whether Container Insights is enabled for the ECS cluster |
 | <a name="output_cwagent_execution_role_arn"></a> [cwagent\_execution\_role\_arn](#output\_cwagent\_execution\_role\_arn) | The ARN of the CloudWatch Agent execution role |
 | <a name="output_cwagent_service_name"></a> [cwagent\_service\_name](#output\_cwagent\_service\_name) | The name of the CloudWatch Agent ECS Service |
 | <a name="output_cwagent_task_definition_arn"></a> [cwagent\_task\_definition\_arn](#output\_cwagent\_task\_definition\_arn) | The ARN of the CloudWatch Agent ECS Task Definition |
