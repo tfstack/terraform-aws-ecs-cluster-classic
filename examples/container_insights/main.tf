@@ -142,7 +142,7 @@ module "ecs_cluster_classic" {
 
   # Container Insights (Built-in ECS monitoring)
   # Set to true if you want container-level monitoring
-  container_insights = false
+  container_insights = true
 
   # CloudWatch Agent Configuration (Optional system monitoring)
   cloudwatch_agent_config = {
@@ -348,7 +348,14 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ServiceName", "continuous-metrics-demo", "ClusterName", local.name]
+            [
+              "AWS/ECS",
+              "CPUUtilization",
+              "ServiceName",
+              "continuous-metrics-demo",
+              "ClusterName",
+              local.name
+            ]
           ]
           period  = local.dashboard_config.period_seconds
           stat    = local.dashboard_config.default_stat
@@ -381,8 +388,7 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               "MemoryUtilization",
               "ServiceName",
               "continuous-metrics-demo",
-              "ClusterName",
-              local.name,
+              "ClusterName", local.name,
             ]
           ]
           period  = local.dashboard_config.period_seconds
@@ -418,6 +424,10 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               "continuous-metrics-demo",
               "ClusterName",
               local.name,
+              {
+                stat   = "Average",
+                period = local.dashboard_config.period_seconds
+              }
             ]
           ]
           period  = local.dashboard_config.period_seconds
@@ -452,21 +462,16 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               "continuous-metrics-demo",
               "ClusterName",
               local.name,
-              {
-                stat   = "Average",
-                period = local.dashboard_config.period_seconds
-              }
+              { stat = "Average", period = local.dashboard_config.period_seconds }
             ],
             [
               local.cloudwatch_metrics.namespace,
               local.cloudwatch_metrics.metric_name,
               "ServiceName",
               "continuous-metrics-demo",
-              "ClusterName", local.name,
-              {
-                stat   = "Maximum",
-                period = local.dashboard_config.period_seconds
-              }
+              "ClusterName",
+              local.name,
+              { stat = "Maximum", period = local.dashboard_config.period_seconds }
             ]
           ]
           period  = local.dashboard_config.period_seconds
