@@ -336,6 +336,15 @@ variable "ecs_services" {
       name      = string
       host_path = string
     })), [])
+
+    # Scheduled task configuration
+    scheduled_task = optional(object({
+      schedule_expression   = string
+      description           = optional(string)
+      enabled               = optional(bool, true)
+      input                 = optional(string)
+      eventbridge_rule_tags = optional(map(string))
+    }))
   }))
 
   default = []
@@ -363,5 +372,14 @@ variable "ecs_services" {
   validation {
     condition     = alltrue([for s in var.ecs_services : can(regex("^[0-9]+$", s.memory))])
     error_message = "memory must be a numeric string (e.g., 512, 1024, 2048)."
+  }
+
+  validation {
+    condition = alltrue([
+      for s in var.ecs_services :
+      s.scheduled_task == null ||
+      (s.scheduled_task != null && can(regex("^(rate\\(|cron\\(|^[0-9]+$)", s.scheduled_task.schedule_expression)))
+    ])
+    error_message = "scheduled_task schedule_expression must be a valid rate or cron expression."
   }
 }

@@ -194,6 +194,7 @@ module "ecs_cluster_classic" {
   ]
 
   ecs_services = [
+    # Service 1: Always running (continuous)
     {
       name                = "continuous-metrics-demo"
       desired_count       = 2
@@ -280,6 +281,94 @@ module "ecs_cluster_classic" {
         Purpose  = "continuous-demo"
         Runtime  = "always-on"
       }
+    },
+
+    # Scheduled service (runs every 5 minutes)
+    {
+      name                = "scheduled-metrics-demo"
+      desired_count       = 0
+      cpu                 = "256"
+      memory              = "512"
+      scheduling_strategy = "REPLICA"
+      propagate_tags      = "TASK_DEFINITION"
+
+      task_role_arn = module.ecs_cluster_classic.ecs_cloudwatch_metrics_role_arn
+
+      container_definitions = jsonencode([
+        {
+          name      = "scheduled-metrics-demo"
+          image     = "public.ecr.aws/aws-cli/aws-cli:latest"
+          cpu       = 256
+          memory    = 512
+          essential = true
+
+          entryPoint = ["sh", "-c"]
+          command = [
+            join("", [
+              "echo 'Scheduled Metrics Collection Started'; ",
+              "VALUE=$(od -An -N2 -tu2 < /dev/urandom | tr -d ' '); ",
+              "VALUE=$((VALUE % ${local.demo_config.random_value_range})); ",
+              "aws cloudwatch put-metric-data ",
+              "--namespace \"$NAMESPACE\" ",
+              "--metric-name \"ScheduledMetric\" ",
+              "--unit Count ",
+              "--value \"$VALUE\" ",
+              "--dimensions ServiceName=\"$SERVICE_NAME\",ClusterName=\"$CLUSTER_NAME\",Type=\"Scheduled\" ",
+              "--region \"$AWS_DEFAULT_REGION\"; ",
+              "echo \"Scheduled metric sent: $VALUE\"; ",
+              "echo 'Scheduled task completed successfully'"
+            ])
+          ]
+
+          environment = [
+            { name = "AWS_DEFAULT_REGION", value = local.region },
+            { name = "SERVICE_NAME", value = "scheduled-metrics-demo" },
+            { name = "CLUSTER_NAME", value = local.name },
+            { name = "NAMESPACE", value = local.cloudwatch_metrics.namespace },
+            { name = "METRIC_NAME", value = "ScheduledMetric" }
+          ]
+
+          logConfiguration = {
+            logDriver = "awslogs"
+            options = {
+              awslogs-group         = aws_cloudwatch_log_group.metrics_app.name
+              awslogs-region        = local.region
+              awslogs-stream-prefix = "ecs"
+            }
+          }
+        }
+      ])
+
+      deployment_minimum_healthy_percent = 50
+      deployment_maximum_percent         = 200
+      health_check_grace_period_seconds  = 60
+
+      network_mode             = "bridge"
+      requires_compatibilities = ["EC2"]
+
+      service_tags = {
+        Environment = "demo"
+        Project     = "ScheduledMetricsDemo"
+        Purpose     = "Scheduled Collection"
+        Service     = "scheduled-metrics-demo"
+        Type        = "ScheduledOnly"
+      }
+
+      task_tags = {
+        TaskType = "scheduled-metrics-demo"
+        Purpose  = "scheduled-collection"
+        Runtime  = "scheduled"
+      }
+
+      scheduled_task = {
+        schedule_expression = "rate(1 minute)"
+        description         = "Scheduled metrics collection every minute"
+        enabled             = true
+        eventbridge_rule_tags = {
+          Environment = "demo"
+          Purpose     = "scheduled-metrics"
+        }
+      }
     }
   ]
 
@@ -288,9 +377,36 @@ module "ecs_cluster_classic" {
   ]
 }
 
-# CloudWatch Dashboard for Continuous Metrics Demo
-resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
-  dashboard_name = "${local.name}-continuous-metrics-demo"
+# CloudWatch Metric Filters for Scheduled Task Monitoring
+resource "aws_cloudwatch_log_metric_filter" "scheduled_task_started" {
+  name           = "scheduled-task-started"
+  log_group_name = aws_cloudwatch_log_group.metrics_app.name
+
+  pattern = "Scheduled Metrics Collection Started"
+
+  metric_transformation {
+    name      = "ScheduledTaskStarted"
+    namespace = "ECS/TaskMetrics"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "scheduled_task_completed" {
+  name           = "scheduled-task-completed"
+  log_group_name = aws_cloudwatch_log_group.metrics_app.name
+
+  pattern = "Scheduled task completed successfully"
+
+  metric_transformation {
+    name      = "ScheduledTaskCompleted"
+    namespace = "ECS/TaskMetrics"
+    value     = "1"
+  }
+}
+
+# CloudWatch Dashboard for Continuous Service Only
+resource "aws_cloudwatch_dashboard" "continuous_service_demo" {
+  dashboard_name = "${local.name}-continuous-service-demo"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -302,7 +418,7 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         width  = 24
         height = 2
         properties = {
-          markdown = "# Continuous Metrics Demo Dashboard (High-Frequency Mode)\n**Service**: ${local.name}-continuous-metrics-demo | **Cluster**: ${local.name} | **Environment**: demo | **Metrics**: Every ${local.demo_config.metric_generation_interval}s | **Dashboard**: ${local.dashboard_config.period_seconds}s intervals"
+          markdown = "# Continuous Service Dashboard\n**Service**: ${local.name}-continuous-metrics-demo | **Cluster**: ${local.name} | **Type**: Always Running | **Instances**: 2 | **Metrics**: Every ${local.demo_config.metric_generation_interval}s"
         }
       },
 
@@ -334,12 +450,13 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               min       = local.dashboard_config.y_axis_min
               max       = local.dashboard_config.y_axis_max
               showUnits = false
+              label     = "Metric Value"
             }
           }
         }
       },
 
-      # CPU Utilization Widget (ECS Service Level)
+      # CPU Utilization Widget
       {
         type   = "metric"
         x      = 12
@@ -348,12 +465,19 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ServiceName", "continuous-metrics-demo", "ClusterName", local.name]
+            [
+              "AWS/ECS",
+              "CPUUtilization",
+              "ServiceName",
+              "continuous-metrics-demo",
+              "ClusterName",
+              local.name
+            ]
           ]
           period  = local.dashboard_config.period_seconds
           stat    = local.dashboard_config.default_stat
           region  = local.region
-          title   = "CPU Utilization - ${local.name}-continuous-metrics-demo"
+          title   = "CPU Utilization - Continuous Service"
           view    = "timeSeries"
           stacked = false
           yAxis = {
@@ -367,7 +491,7 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         }
       },
 
-      # Memory Utilization Widget (ECS Service Level)
+      # Memory Utilization Widget
       {
         type   = "metric"
         x      = 0
@@ -381,14 +505,13 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               "MemoryUtilization",
               "ServiceName",
               "continuous-metrics-demo",
-              "ClusterName",
-              local.name,
+              "ClusterName", local.name,
             ]
           ]
           period  = local.dashboard_config.period_seconds
           stat    = local.dashboard_config.default_stat
           region  = local.region
-          title   = "Memory Utilization - ${local.name}-continuous-metrics-demo"
+          title   = "Memory Utilization - Continuous Service"
           view    = "timeSeries"
           stacked = false
           yAxis = {
@@ -402,7 +525,7 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         }
       },
 
-      # Metrics Count Widget (replaces Running Task Count)
+      # Metrics Count Widget
       {
         type   = "metric"
         x      = 12
@@ -418,12 +541,16 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
               "continuous-metrics-demo",
               "ClusterName",
               local.name,
+              {
+                stat   = "SampleCount",
+                period = local.dashboard_config.period_seconds
+              }
             ]
           ]
           period  = local.dashboard_config.period_seconds
-          stat    = "SampleCount"
+          stat    = "Sum"
           region  = local.region
-          title   = "Metrics Count - ${local.name}-continuous-metrics-demo"
+          title   = "Metrics Count - Continuous Service"
           view    = "timeSeries"
           stacked = false
           yAxis = {
@@ -436,43 +563,61 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         }
       },
 
-      # Service Metrics Summary Widget
+      # Service Summary Widget
       {
-        type   = "metric"
+        type   = "text"
         x      = 0
         y      = 14
         width  = 24
+        height = 3
+        properties = {
+          markdown = "## Continuous Service Summary\n**Service Name**: ${local.name}-continuous-metrics-demo\n**Type**: Always Running (2 instances)\n**Metric**: ${local.cloudwatch_metrics.metric_name}\n**Frequency**: Every ${local.demo_config.metric_generation_interval} seconds\n**Purpose**: Continuous monitoring and metrics generation"
+        }
+      }
+    ]
+  })
+}
+
+# CloudWatch Dashboard for Scheduled Service Only
+resource "aws_cloudwatch_dashboard" "scheduled_service_demo" {
+  dashboard_name = "${local.name}-scheduled-service-demo"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      # Header Widget
+      {
+        type   = "text"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 2
+        properties = {
+          markdown = "# Scheduled Service Dashboard\n**Service**: ${local.name}-scheduled-metrics-demo | **Cluster**: ${local.name} | **Type**: Scheduled Execution | **Instances**: 0 (runs when triggered) | **Schedule**: Every 1 minute"
+        }
+      },
+
+      # Custom ScheduledMetric Widget
+      {
+        type   = "metric"
+        x      = 0
+        y      = 2
+        width  = 12
         height = 6
         properties = {
           metrics = [
             [
               local.cloudwatch_metrics.namespace,
-              local.cloudwatch_metrics.metric_name,
+              "ScheduledMetric",
               "ServiceName",
-              "continuous-metrics-demo",
-              "ClusterName",
-              local.name,
-              {
-                stat   = "Average",
-                period = local.dashboard_config.period_seconds
-              }
-            ],
-            [
-              local.cloudwatch_metrics.namespace,
-              local.cloudwatch_metrics.metric_name,
-              "ServiceName",
-              "continuous-metrics-demo",
+              "scheduled-metrics-demo",
               "ClusterName", local.name,
-              {
-                stat   = "Maximum",
-                period = local.dashboard_config.period_seconds
-              }
+              "Type", "Scheduled"
             ]
           ]
           period  = local.dashboard_config.period_seconds
           stat    = local.dashboard_config.default_stat
           region  = local.region
-          title   = "${local.cloudwatch_metrics.metric_name} Statistics - Average, Max, Min"
+          title   = "Custom ScheduledMetric - Scheduled Service"
           view    = "timeSeries"
           stacked = false
           yAxis = {
@@ -486,7 +631,175 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         }
       },
 
-      # Debug Information Widget
+      # CPU Utilization Widget
+      {
+        type   = "metric"
+        x      = 12
+        y      = 2
+        width  = 12
+        height = 6
+        properties = {
+          metrics = [
+            [
+              "AWS/ECS",
+              "CPUUtilization",
+              "ServiceName",
+              "scheduled-metrics-demo",
+              "ClusterName",
+              local.name
+            ]
+          ]
+          period  = local.dashboard_config.period_seconds
+          stat    = local.dashboard_config.default_stat
+          region  = local.region
+          title   = "CPU Utilization - Scheduled Service"
+          view    = "timeSeries"
+          stacked = false
+          yAxis = {
+            left = {
+              min       = local.dashboard_config.y_axis_min
+              max       = local.dashboard_config.y_axis_max
+              showUnits = false
+              label     = "CPU %"
+            }
+          }
+        }
+      },
+
+      # Memory Utilization Widget
+      {
+        type   = "metric"
+        x      = 0
+        y      = 8
+        width  = 12
+        height = 6
+        properties = {
+          metrics = [
+            [
+              "AWS/ECS",
+              "MemoryUtilization",
+              "ServiceName",
+              "scheduled-metrics-demo",
+              "ClusterName", local.name,
+            ]
+          ]
+          period  = local.dashboard_config.period_seconds
+          stat    = local.dashboard_config.default_stat
+          region  = local.region
+          title   = "Memory Utilization - Scheduled Service"
+          view    = "timeSeries"
+          stacked = false
+          yAxis = {
+            left = {
+              min       = local.dashboard_config.y_axis_min
+              max       = local.dashboard_config.y_axis_max
+              showUnits = false
+              label     = "Memory %"
+            }
+          }
+        }
+      },
+
+      # Metrics Count Widget
+      {
+        type   = "metric"
+        x      = 12
+        y      = 8
+        width  = 12
+        height = 6
+        properties = {
+          metrics = [
+            [
+              local.cloudwatch_metrics.namespace,
+              "ScheduledMetric",
+              "ServiceName",
+              "scheduled-metrics-demo",
+              "ClusterName",
+              local.name,
+              "Type", "Scheduled",
+              {
+                stat   = "SampleCount",
+                period = local.dashboard_config.period_seconds
+              }
+            ]
+          ]
+          period  = local.dashboard_config.period_seconds
+          stat    = "Sum"
+          region  = local.region
+          title   = "Metrics Count - Scheduled Service"
+          view    = "timeSeries"
+          stacked = false
+          yAxis = {
+            left = {
+              min       = 0
+              showUnits = false
+              label     = "Metric Count"
+            }
+          }
+        }
+      },
+
+      # Task Execution Count Widget
+      {
+        type   = "metric"
+        x      = 0
+        y      = 14
+        width  = 12
+        height = 6
+        properties = {
+          metrics = [
+            [
+              "ECS/TaskMetrics",
+              "ScheduledTaskStarted"
+            ]
+          ]
+          period  = local.dashboard_config.period_seconds
+          stat    = "Sum"
+          region  = local.region
+          title   = "Task Execution Count - Scheduled Service"
+          view    = "timeSeries"
+          stacked = false
+          yAxis = {
+            left = {
+              min       = 0
+              showUnits = false
+              label     = "Execution Count"
+            }
+          }
+        }
+      },
+
+      # Task Completion Rate Widget
+      {
+        type   = "metric"
+        x      = 12
+        y      = 14
+        width  = 12
+        height = 6
+        properties = {
+          metrics = [
+            [
+              "ECS/TaskMetrics",
+              "ScheduledTaskCompleted"
+            ]
+          ]
+          period  = local.dashboard_config.period_seconds
+          stat    = "Sum"
+          region  = local.region
+          title   = "Task Completion Count - Scheduled Service"
+          view    = "timeSeries"
+          stacked = false
+          yAxis = {
+            left = {
+              min       = 0
+              showUnits = false
+              label     = "Completion Count"
+            }
+          }
+        }
+      },
+
+      # Service Summary Widget
       {
         type   = "text"
         x      = 0
@@ -494,9 +807,49 @@ resource "aws_cloudwatch_dashboard" "continuous_metrics_demo" {
         width  = 24
         height = 3
         properties = {
-          markdown = "## Debug Information\n**Container Dimensions**: ServiceName=${local.name}-continuous-metrics-demo, ClusterName=${local.name}\n**Dashboard Dimensions**: ServiceName=continuous-metrics-demo, ClusterName=${local.name}\n**Metric Namespace**: ${local.cloudwatch_metrics.namespace}\n**Metric Name**: ${local.cloudwatch_metrics.metric_name}\n**Generation Frequency**: Every ${local.demo_config.metric_generation_interval} seconds"
+          markdown = "## Scheduled Service Summary\n**Service Name**: ${local.name}-scheduled-metrics-demo\n**Type**: Scheduled Execution (runs every 1 minute)\n**Metric**: ScheduledMetric\n**Frequency**: Every 1 minute\n**Purpose**: Periodic data collection and batch processing"
         }
       }
     ]
   })
+}
+
+# Outputs
+output "continuous_dashboard_url" {
+  description = "URL for the Continuous Service Dashboard"
+  value       = "https://${data.aws_region.current.region}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.region}#dashboards:name=${aws_cloudwatch_dashboard.continuous_service_demo.dashboard_name}"
+}
+
+output "scheduled_dashboard_url" {
+  description = "URL for the Scheduled Service Dashboard"
+  value       = "https://${data.aws_region.current.region}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.region}#dashboards:name=${aws_cloudwatch_dashboard.scheduled_service_demo.dashboard_name}"
+}
+
+output "cluster_info" {
+  description = "Information about the ECS cluster and services"
+  value = {
+    cluster_name = local.name
+    region       = local.region
+    services = {
+      continuous = {
+        name        = "continuous-metrics-demo"
+        type        = "Always Running"
+        instances   = 2
+        metric_name = local.cloudwatch_metrics.metric_name
+        frequency   = "Every ${local.demo_config.metric_generation_interval} seconds"
+      }
+      scheduled = {
+        name        = "scheduled-metrics-demo"
+        type        = "Scheduled"
+        instances   = 0
+        metric_name = "ScheduledMetric"
+        frequency   = "Every 5 minutes"
+        schedule    = "rate(5 minutes)"
+      }
+    }
+    dashboards = {
+      continuous_service = aws_cloudwatch_dashboard.continuous_service_demo.dashboard_name
+      scheduled_service  = aws_cloudwatch_dashboard.scheduled_service_demo.dashboard_name
+    }
+  }
 }

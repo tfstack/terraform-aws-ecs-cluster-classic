@@ -103,3 +103,24 @@ output "ecs_instance_role_arns" {
   description = "ARNs of the ECS instance roles"
   value       = { for v in aws_iam_role.asg_roles : v.name => v.arn }
 }
+
+output "eventbridge_ecs_execution_role_arn" {
+  description = "The ARN of the EventBridge execution role for ECS scheduled tasks"
+  value       = length(aws_iam_role.eventbridge_ecs_execution) > 0 ? aws_iam_role.eventbridge_ecs_execution[0].arn : null
+}
+
+# Scheduled Tasks Outputs
+output "ecs_scheduled_tasks" {
+  description = "ECS Scheduled Tasks Information"
+  value = {
+    for k, v in aws_cloudwatch_event_rule.scheduled_task : k => {
+      rule_name   = v.name
+      rule_arn    = v.arn
+      schedule    = v.schedule_expression
+      description = v.description
+      is_enabled  = v.state == "ENABLED"
+      target_arn  = aws_cloudwatch_event_target.scheduled_task[k].arn
+      target_id   = aws_cloudwatch_event_target.scheduled_task[k].target_id
+    }
+  }
+}
