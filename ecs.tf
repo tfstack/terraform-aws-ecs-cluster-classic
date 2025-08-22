@@ -1,5 +1,10 @@
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
+
+  setting {
+    name  = "containerInsights"
+    value = var.container_insights ? "enabled" : "disabled"
+  }
 }
 
 ## Cloudwatch Agent
@@ -101,7 +106,7 @@ resource "aws_ecs_task_definition" "cwagent" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = "/ecs/${var.cluster_name}/cwagent"
-          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-region"        = data.aws_region.current.region
           "awslogs-stream-prefix" = "ecs"
         }
       }

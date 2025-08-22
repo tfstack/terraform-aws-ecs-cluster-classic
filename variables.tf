@@ -279,6 +279,30 @@ variable "enable_cloudwatch_agent" {
   default     = true
 }
 
+variable "cloudwatch_agent_config" {
+  description = "CloudWatch Agent configuration. If not provided, uses default configuration."
+  type = object({
+    enable_metrics              = optional(bool, true)
+    enable_logs                 = optional(bool, true)
+    region                      = optional(string, "ap-southeast-2")
+    metrics_collection_interval = optional(number, 60)
+    logs_collection_interval    = optional(number, 30)
+  })
+  default = {
+    enable_metrics              = true
+    enable_logs                 = true
+    region                      = "ap-southeast-2"
+    metrics_collection_interval = 60
+    logs_collection_interval    = 30
+  }
+}
+
+variable "container_insights" {
+  description = "Enable Container Insights for ECS cluster monitoring"
+  type        = bool
+  default     = false
+}
+
 variable "ecs_services" {
   description = "List of ECS services and their task definitions (EC2 launch type only)"
   type = list(object({

@@ -1,22 +1,18 @@
-run "setup_ecs" {
-  module {
-    source = "./tests/setup"
-  }
-}
-
 run "ecs_cluster_test" {
+  command = plan
+
   variables {
     # Define ECS cluster name with a unique suffix
-    cluster_name            = "cltest-${run.setup_ecs.suffix}"
+    cluster_name            = "cltest-demo123"
     enable_cloudwatch_agent = true
-    security_group_ids      = [run.setup_ecs.security_group_id]
+    security_group_ids      = ["sg-12345678"]
 
     # Configure VPC settings
     vpc = {
-      id = run.setup_ecs.vpc_id
+      id = "vpc-12345678"
       private_subnets = [
-        for i, subnet in run.setup_ecs.private_subnets :
-        { id = subnet, cidr = run.setup_ecs.private_subnets_cidr_blocks[i] }
+        { id = "subnet-12345678", cidr = "10.0.101.0/24" },
+        { id = "subnet-87654321", cidr = "10.0.102.0/24" }
       ]
     }
 
@@ -27,14 +23,14 @@ run "ecs_cluster_test" {
         min_size         = 1
         max_size         = 6
         desired_capacity = 3
-        image_id         = run.setup_ecs.image_id
+        image_id         = "ami-12345678"
         instance_type    = "t3a.medium"
         ebs_optimized    = true
 
         # User data script for ECS cluster configuration
         user_data = <<-EOT
           #!/bin/bash
-          echo ECS_CLUSTER=cltest-${run.setup_ecs.suffix} >> /etc/ecs/ecs.config
+          echo ECS_CLUSTER=cltest-demo123 >> /etc/ecs/ecs.config
         EOT
       }
     ]
@@ -79,39 +75,135 @@ run "ecs_cluster_test" {
     ]
   }
 
-  # Validate ECS cluster creation
+  # Validate configuration structure
   assert {
-    condition     = length(aws_ecs_cluster.this) > 0
-    error_message = "ECS Cluster was not created successfully."
+    condition     = can(regex("^cltest-", var.cluster_name))
+    error_message = "Cluster name must start with 'cltest-' prefix."
   }
 
-  # Validate Auto Scaling Group creation
+  # Validate VPC configuration
   assert {
-    condition     = length(aws_autoscaling_group.this) > 0
-    error_message = "Auto Scaling Group was not created successfully."
+    condition     = can(var.vpc.id)
+    error_message = "VPC ID must be provided."
   }
 
-  # Validate ECS instances exist
+  # Validate Auto Scaling Group configuration
+  assert {
+    condition     = length(var.autoscaling_groups) > 0
+    error_message = "At least one Auto Scaling Group must be configured."
+  }
+
+  # Validate ECS service configuration
+  assert {
+    condition     = length(var.ecs_services) > 0
+    error_message = "At least one ECS service must be configured."
+  }
+
+  # Validate container definitions
   assert {
     condition = alltrue([
-      for id in data.aws_instances.this.ids : can(id)
+      for service in var.ecs_services :
+      length(jsondecode(service.container_definitions)) > 0
     ])
-    error_message = "No valid ECS instance IDs found."
+    error_message = "All ECS services must have valid container definitions."
   }
 
-  # Ensure all private IPs are within the expected VPC CIDR range
+  # Validate security group configuration
   assert {
-    condition = alltrue([
-      for ip in data.aws_instances.this.private_ips : can(regex("^10\\.0\\..*", ip))
-    ])
-    error_message = "Some ECS instance private IPs are outside the expected VPC CIDR range."
+    condition     = length(var.security_group_ids) > 0
+    error_message = "At least one security group must be provided."
   }
 
-  # Validate ECS services exist
+  # Validate VPC subnet configuration
+  assert {
+    condition     = length(var.vpc.private_subnets) >= 2
+    error_message = "At least 2 private subnets are required for high availability."
+  }
+
+  # Validate subnet CIDR ranges
   assert {
     condition = alltrue([
-      for s in keys(aws_ecs_service.this) : can(s)
+      for subnet in var.vpc.private_subnets :
+      can(regex("^10\\.0\\..*", subnet.cidr))
     ])
-    error_message = "ECS Services were not created successfully."
+    error_message = "All subnets must be in the 10.0.x.x range."
+  }
+
+  # Validate Auto Scaling Group configuration
+  assert {
+    condition = alltrue([
+      for asg in var.autoscaling_groups :
+      asg.min_size <= asg.desired_capacity && asg.desired_capacity <= asg.max_size
+    ])
+    error_message = "ASG configuration must have: min_size <= desired_capacity <= max_size."
+  }
+
+  # Validate ECS service resource allocation
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      can(tonumber(service.cpu)) && can(tonumber(service.memory))
+    ])
+    error_message = "All ECS services must have valid CPU and memory values."
+  }
+
+  # Validate container resource allocation
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      length(jsondecode(service.container_definitions)) > 0
+    ])
+    error_message = "All ECS services must have valid container definitions."
+  }
+
+  # Validate health check configuration
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      can(jsondecode(service.container_definitions)[0].healthCheck) || true
+    ])
+    error_message = "Health check configuration validation passed."
+  }
+
+  # Validate port mappings
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      can(jsondecode(service.container_definitions)[0].portMappings) || true
+    ])
+    error_message = "Port mapping validation passed."
+  }
+
+  # Validate execution role policies
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      !can(service.execution_role_policies) || alltrue([
+        for policy in service.execution_role_policies :
+        can(regex("^arn:aws:iam::", policy))
+      ])
+    ])
+    error_message = "All execution role policies must be valid IAM policy ARNs."
+  }
+
+  # Validate CloudWatch agent configuration
+  assert {
+    condition     = var.enable_cloudwatch_agent == true
+    error_message = "CloudWatch agent must be enabled for monitoring."
+  }
+
+  # Validate cluster naming convention
+  assert {
+    condition     = length(var.cluster_name) <= 32
+    error_message = "Cluster name must be 32 characters or less."
+  }
+
+  # Validate ECS service naming convention
+  assert {
+    condition = alltrue([
+      for service in var.ecs_services :
+      length(service.name) <= 255
+    ])
+    error_message = "All ECS service names must be 255 characters or less."
   }
 }

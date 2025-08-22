@@ -19,6 +19,11 @@ output "cwagent_task_role_arn" {
   value       = aws_iam_role.cwagent_assume.arn
 }
 
+output "ecs_cloudwatch_metrics_role_arn" {
+  description = "The ARN of the ECS CloudWatch metrics role for tasks to send custom metrics"
+  value       = var.enable_cloudwatch_agent ? aws_iam_role.ecs_cloudwatch_metrics[0].arn : null
+}
+
 # Custom services Outputs
 output "ecs_custom_services" {
   description = "ECS Custom Services Information"
