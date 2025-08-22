@@ -15,7 +15,8 @@ resource "aws_ssm_parameter" "cwagent" {
         "metrics" : {
           "metrics_collected" : {
             "ecs" : {
-              "metrics_collection_interval" : var.cloudwatch_agent_config.logs_collection_interval,
+              "measurement" : ["ecs_running_task_count", "ecs_pending_task_count"],
+              "metrics_collection_interval" : var.cloudwatch_agent_config.metrics_collection_interval,
               "resources" : ["*"]
             },
             "cpu" : {
@@ -50,11 +51,6 @@ resource "aws_ssm_parameter" "cwagent" {
       } : {},
       var.cloudwatch_agent_config.enable_logs ? {
         "logs" : {
-          "metrics_collected" : {
-            "ecs" : {
-              "metrics_collection_interval" : var.cloudwatch_agent_config.logs_collection_interval
-            }
-          },
           "logs_collected" : {
             "files" : {
               "collect_list" : [
@@ -102,8 +98,7 @@ resource "aws_ssm_parameter" "cwagent" {
                 }
               ]
             }
-          },
-          "force_flush_interval" : 15
+          }
         }
       } : {}
     )

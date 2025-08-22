@@ -24,6 +24,22 @@ output "ecs_cloudwatch_metrics_role_arn" {
   value       = var.enable_cloudwatch_agent ? aws_iam_role.ecs_cloudwatch_metrics[0].arn : null
 }
 
+# Container Insights Outputs
+output "container_insights_enabled" {
+  description = "Whether Container Insights is enabled for the ECS cluster"
+  value       = var.container_insights
+}
+
+output "cluster_name" {
+  description = "The name of the ECS cluster"
+  value       = aws_ecs_cluster.this.name
+}
+
+output "cluster_arn" {
+  description = "The ARN of the ECS cluster"
+  value       = aws_ecs_cluster.this.arn
+}
+
 # Custom services Outputs
 output "ecs_custom_services" {
   description = "ECS Custom Services Information"
