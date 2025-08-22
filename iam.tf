@@ -229,3 +229,64 @@ resource "aws_iam_role_policy_attachment" "ecs_cloudwatch_metrics_policy" {
   role       = aws_iam_role.ecs_cloudwatch_metrics[0].name
   policy_arn = aws_iam_policy.ecs_cloudwatch_metrics[0].arn
 }
+
+#########
+# EventBridge Execution Role for Scheduled Tasks
+resource "aws_iam_role" "eventbridge_ecs_execution" {
+  count = length([for s in var.ecs_services : s if s.scheduled_task != null]) > 0 ? 1 : 0
+
+  name = "${var.cluster_name}-eventbridge-ecs-execution"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name    = "${var.cluster_name}-eventbridge-ecs-execution"
+    Purpose = "EventBridge execution role for ECS scheduled tasks"
+  }
+}
+
+# Policy for EventBridge to invoke ECS tasks
+resource "aws_iam_policy" "eventbridge_ecs_execution" {
+  count = length([for s in var.ecs_services : s if s.scheduled_task != null]) > 0 ? 1 : 0
+
+  name        = "${var.cluster_name}-eventbridge-ecs-execution"
+  description = "Permissions for EventBridge to invoke ECS tasks"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:RunTask"
+        ]
+        Resource = [
+          "arn:aws:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:task-definition/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eventbridge_ecs_execution" {
+  count = length([for s in var.ecs_services : s if s.scheduled_task != null]) > 0 ? 1 : 0
+
+  role       = aws_iam_role.eventbridge_ecs_execution[0].name
+  policy_arn = aws_iam_policy.eventbridge_ecs_execution[0].arn
+}

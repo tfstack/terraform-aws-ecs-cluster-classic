@@ -189,3 +189,48 @@ resource "aws_ecs_service" "this" {
 
   tags = each.value.service_tags
 }
+
+# Scheduled tasks using EventBridge
+resource "aws_cloudwatch_event_rule" "scheduled_task" {
+  for_each = { for s in var.ecs_services : s.name => s if s.scheduled_task != null }
+
+  name                = "${var.cluster_name}-${each.value.name}-scheduled"
+  description         = lookup(each.value.scheduled_task, "description", "Scheduled task for ${each.value.name}")
+  schedule_expression = each.value.scheduled_task.schedule_expression
+  state               = lookup(each.value.scheduled_task, "enabled", true) ? "ENABLED" : "DISABLED"
+
+  tags = merge(
+    {
+      Name    = "${var.cluster_name}-${each.value.name}-scheduled"
+      Cluster = var.cluster_name
+      Service = each.value.name
+      Type    = "ScheduledTask"
+    },
+    lookup(each.value.scheduled_task, "eventbridge_rule_tags", {})
+  )
+}
+
+resource "aws_cloudwatch_event_target" "scheduled_task" {
+  for_each = { for s in var.ecs_services : s.name => s if s.scheduled_task != null }
+
+  rule      = aws_cloudwatch_event_rule.scheduled_task[each.key].name
+  target_id = "${var.cluster_name}-${each.value.name}-target"
+  arn       = aws_ecs_cluster.this.arn
+  role_arn  = aws_iam_role.eventbridge_ecs_execution[0].arn
+
+  ecs_target {
+    task_count          = 1
+    task_definition_arn = aws_ecs_task_definition.this[each.key].arn
+    launch_type         = "EC2"
+
+    # Only use network_configuration for awsvpc mode tasks
+    dynamic "network_configuration" {
+      for_each = each.value.network_mode == "awsvpc" ? [1] : []
+      content {
+        subnets = [for subnet in var.vpc.private_subnets : subnet.id]
+      }
+    }
+  }
+
+  input = lookup(each.value.scheduled_task, "input", null)
+}

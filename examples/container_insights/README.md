@@ -1,128 +1,76 @@
-# Container Insights Example
+# Container Insights Example with Scheduled Tasks
 
-This example demonstrates how to create an ECS cluster with Container Insights enabled for enhanced monitoring and observability.
+This example demonstrates an ECS cluster with Container Insights and two service types:
+
+- **Continuous Service**: Always running for real-time monitoring
+- **Scheduled Service**: Runs every 5 minutes using EventBridge
 
 ## Features
 
-- **Container Insights Enabled**: Built-in ECS monitoring that provides container-level metrics
-- **CloudWatch Agent**: System-level monitoring for EC2 instances
-- **Auto Scaling Groups**: Scalable ECS capacity with EC2 instances
-- **Load Generator Service**: Busybox container that generates CPU and memory activity for realistic metrics
-- **Security Best Practices**: Least-privilege IAM policies and secure defaults
-
-## Security Features
-
-This example follows security best practices:
-
-- **Least-Privilege Access**: Uses `AmazonECSTaskExecutionRolePolicy` instead of overly permissive policies
-- **No Broad Permissions**: Avoids policies like `CloudWatchLogsFullAccess` in favor of specific, minimal permissions
-- **Built-in Monitoring**: Container Insights requires no additional IAM permissions
-- **Secure Defaults**: ECS task execution role handles CloudWatch Logs automatically
-
-## Container Insights Benefits
-
-Container Insights provides:
-
-- **Container-level metrics**: CPU, memory, network, and storage utilization
-
-- **Task-level metrics**: Per-task resource consumption and performance
-- **Service-level metrics**: Service health and performance indicators
-- **Cluster-level metrics**: Overall cluster health and capacity
-- **Real-time monitoring**: Metrics available in CloudWatch with minimal latency
+- Container Insights enabled for ECS monitoring
+- CloudWatch Agent for system-level monitoring
+- Auto Scaling Groups for scalable ECS capacity
+- Continuous service generating metrics every 10 seconds
+- Scheduled service running every 5 minutes via EventBridge
+- Two separate CloudWatch dashboards
 
 ## Usage
 
-1. **Initialize the example**:
+1. **Initialize**:
 
    ```bash
    cd examples/container_insights
    terraform init
    ```
 
-2. **Review and customize** (optional):
-
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars as needed
-   ```
-
-3. **Deploy the infrastructure**:
+2. **Deploy**:
 
    ```bash
    terraform plan
    terraform apply
    ```
 
-4. **Access Container Insights**:
-   - Go to CloudWatch > Insights
-   - Select "Container Insights" from the dropdown
-   - Choose your ECS cluster to view metrics
+3. **Access**:
+   - Container Insights: CloudWatch > Insights > Container Insights
+   - Dashboards: Use the output URLs
 
 ## Configuration
 
-### Key Variables
+### Services
 
-- `container_insights = true`: Enables Container Insights monitoring
-- `enable_cloudwatch_agent = true`: Enables system-level monitoring
-- `cluster_name`: Name of the ECS cluster
-- `autoscaling_groups`: EC2 instance configuration for ECS capacity
-- `ecs_services`: Container definitions and service configuration
+**Continuous Service** (`continuous-metrics-demo`):
 
-### Load Generator Container
+- Always running with 2 instances
+- Generates metrics every 10 seconds
 
-The example includes a **load generator container** that creates realistic metrics:
+**Scheduled Service** (`scheduled-metrics-demo`):
 
-```hcl
-container_definitions = [
-  {
-    name      = "load-generator"
-    image     = "busybox:latest"
-    command   = ["sh", "-c", "while true; do dd if=/dev/zero of=/dev/null bs=1M count=100; sleep 2; done"]
-  }
-]
-```
+- Runs every 5 minutes when triggered
+- No continuous instances (`desired_count = 0`)
 
-This container:
-
-- **Generates CPU load**: Continuously runs `dd` command to process data
-- **Creates memory activity**: Allocates and releases memory blocks
-- **Runs indefinitely**: Provides continuous metrics for Container Insights
-- **No external dependencies**: Self-contained and simple to deploy
-
-### IAM Policies
-
-The example uses minimal, secure IAM policies:
+### Scheduled Task
 
 ```hcl
-execution_role_policies = [
-  "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-]
+scheduled_task = {
+  schedule_expression = "rate(5 minutes)"
+  description        = "Scheduled metrics collection"
+  enabled           = true
+}
 ```
 
-This policy provides only the essential permissions needed for ECS task execution and CloudWatch Logs integration.
+### Dashboards
 
-### Monitoring
+- **Continuous Dashboard**: Monitors continuous service metrics
+- **Scheduled Dashboard**: Monitors scheduled service execution
 
-The example includes:
+## Outputs
 
-- **Container Insights**: Built-in ECS monitoring (enabled by default)
-
-- **CloudWatch Agent**: System metrics collection
-- **CloudWatch Logs**: Container log aggregation (handled automatically)
-- **Health Checks**: Container health monitoring
+- `continuous_dashboard_url`: Continuous service dashboard
+- `scheduled_dashboard_url`: Scheduled service dashboard
+- `cluster_info`: Service and dashboard information
 
 ## Clean Up
-
-To destroy the infrastructure:
 
 ```bash
 terraform destroy
 ```
-
-## Notes
-
-- Container Insights is enabled at the cluster level and applies to all services
-- Metrics are automatically collected and available in CloudWatch
-- No additional agents or sidecars required for Container Insights
-- CloudWatch Agent provides additional system-level metrics
-- IAM policies follow the principle of least privilege for enhanced security
